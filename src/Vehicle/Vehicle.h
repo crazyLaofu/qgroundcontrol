@@ -15,6 +15,7 @@
 #include <QGeoCoordinate>
 #include <QTime>
 #include <QQueue>
+#include <QSharedPointer>
 
 #include "FactGroup.h"
 #include "QGCMAVLink.h"
@@ -62,10 +63,20 @@ class RequestMessageTest;
 class LinkInterface;
 class LinkManager;
 class InitialConnectStateMachine;
+class HealthAndArmingCheckHandler;
 
 #if defined(QGC_AIRMAP_ENABLED)
 class AirspaceVehicleManager;
 #endif
+
+namespace events {
+class Event;
+class ReceiveProtocol;
+namespace parser {
+class Parser;
+class ParsedEvent;
+}
+}
 
 Q_DECLARE_LOGGING_CATEGORY(VehicleLog)
 
@@ -781,6 +792,7 @@ signals:
     void toolIndicatorsChanged          ();
     void modeIndicatorsChanged          ();
     void textMessageReceived            (int uasid, int componentid, int severity, QString text);
+    void calibrationEventReceived       (int uasid, int componentid, int severity, QSharedPointer<events::parser::ParsedEvent> event);
     void checkListStateChanged          ();
     void messagesReceivedChanged        ();
     void messagesSentChanged            ();
@@ -914,6 +926,8 @@ private:
     void _handleMessageInterval         (const mavlink_message_t& message);
     void _handleGimbalOrientation       (const mavlink_message_t& message);
     void _handleObstacleDistance        (const mavlink_message_t& message);
+    void _handleEvents(const mavlink_message_t& message);
+    void _handleEvent(uint8_t comp_id, const mavlink_event_t& event, QSharedPointer<events::parser::Parser> parser);
     // ArduPilot dialect messages
 #if !defined(NO_ARDUPILOT_DIALECT)
     void _handleCameraFeedback          (const mavlink_message_t& message);
@@ -1097,6 +1111,15 @@ private:
     QGCMapCircle    _orbitMapCircle;
     QTimer          _orbitTelemetryTimer;
     static const int _orbitTelemetryTimeoutMsecs = 3000; // No telemetry for this amount and orbit will go inactive
+
+    struct EventsPerComponent {
+        QSharedPointer<events::ReceiveProtocol> protocol;
+        QSharedPointer<QTimer> timer;
+        QSharedPointer<events::parser::Parser> parser;
+        QSharedPointer<HealthAndArmingCheckHandler> health_and_arming_checks;
+    };
+
+    QMap<uint8_t, EventsPerComponent> _events; // One protocol handler for each component ID
 
     // PID Tuning telemetry mode
     bool            _pidTuningTelemetryMode = false;
